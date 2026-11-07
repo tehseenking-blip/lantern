@@ -1,0 +1,53 @@
+{
+  "name": "lantern-local-chat",
+  "productName": "Lantern",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A local-first desktop chat client for your own local language models.",
+  "main": "electron/main.js",
+  "license": "MIT",
+  "author": "Lantern",
+  "scripts": {
+    "build:ui": "vite build",
+    "start": "npm run build:ui && electron .",
+    "test": "node --test",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "dist": "npm run build:ui && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "local.lantern.chat",
+    "productName": "Lantern",
+    "files": [
+      "electron/**/*",
+      "dist-renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
