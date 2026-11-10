@@ -29,7 +29,7 @@ jobs:
         with:
           name: lantern-source-${{ github.sha }}
           path: lantern-source.tar
-          retention-days: 3
+          retention-days: 7
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -39,14 +39,42 @@ jobs:
         run: npm test
       - name: Production renderer build
         run: npm run build:ui
-      - name: Build Windows application directory
+      - name: Windows PowerShell launcher validation
         if: runner.os == 'Windows'
-        run: npx electron-builder --win --dir --publish never
+        run: npm run test:windows-launcher
+      - name: Real Electron desktop smoke on Windows (simulated inference)
+        if: runner.os == 'Windows'
+        run: npm run test:desktop
+      - name: Real Electron desktop smoke on Linux (simulated inference)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npx electron --no-sandbox scripts/electron-smoke.cjs
+      - name: Build unsigned Windows installer
+        if: runner.os == 'Windows'
+        run: npm run dist
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Check backend JavaScript syntax
+      - name: Check backend and test-runner JavaScript syntax
         shell: bash
-        run: for file in electron/*.js; do node --check "$file" || exit 1; done
+        run: for file in electron/*.js scripts/*.cjs; do node --check "$file" || exit 1; done
+      - name: Keep desktop evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lantern-desktop-${{ runner.os }}-${{ github.sha }}
+          path: test-artifacts
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Keep Windows installer
+        if: success() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lantern-windows-colibri-${{ github.sha }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 7
       - name: Keep production UI for review
         uses: actions/upload-artifact@v4
         if: success()
