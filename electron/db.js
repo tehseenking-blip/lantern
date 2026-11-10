@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const Database = require("better-sqlite3");
+const { DEFAULT_PROVIDERS, withColibri } = require("./providers");
 
 let db = null;
 let ftsAvailable = false;
@@ -134,10 +135,7 @@ const DEFAULT_SETTINGS = {
   assistantInstructions:
     "You are a careful, direct assistant working offline on this computer. Answer in Australian English. " +
     "Be accurate about what you know and say plainly when you do not know something.",
-  providers: [
-    { id: "ollama", label: "Ollama", baseUrl: "http://127.0.0.1:11434", kind: "ollama" },
-    { id: "lmstudio", label: "LM Studio", baseUrl: "http://127.0.0.1:1234", kind: "openai" },
-  ],
+  providers: DEFAULT_PROVIDERS,
   activeProvider: "ollama",
   lastModel: "",
   retrieval: { enabled: true, limit: 6, otherChats: false },
@@ -155,7 +153,8 @@ function getSettings() {
       stored[row.key] = row.value;
     }
   }
-  return { ...DEFAULT_SETTINGS, ...stored };
+  const settings = { ...DEFAULT_SETTINGS, ...stored };
+  return { ...settings, providers: withColibri(settings.providers) };
 }
 
 function updateSettings(patch) {

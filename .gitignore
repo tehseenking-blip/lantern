@@ -4,3 +4,5 @@ release/
 *.log
 .DS_Store
 .env
+test-artifacts/
+lantern-source.tar

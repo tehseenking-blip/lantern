@@ -31,22 +31,24 @@ export default function ChatSettings({
   const hasKey = (settings.secretProviders || []).includes(provider ? provider.id : "");
 
   useEffect(() => {
-    if (!chat) return;
-    const discover = async () => {
-      if (!provider) return;
-      setBusy(true);
-      const result = await api.providers.models({ kind: provider.kind, baseUrl: provider.baseUrl });
-      if (result.ok) {
-        setModels(result.models);
-        setStatus({ ok: true, text: `${result.models.length} model${result.models.length === 1 ? "" : "s"} found` });
-      } else {
-        setModels([]);
-        setStatus({ ok: false, text: result.error });
-      }
-      setBusy(false);
-    };
-    discover();
-  }, [chat && chat.id, providerId]);
+    let cancelled = false;
+    if (!chat || !provider) return undefined;
+    setBusy(true);
+    setModels([]);
+    (async () => {
+      try {
+        const result = await api.providers.models({ providerId: provider.id, kind: provider.kind, baseUrl: provider.baseUrl });
+        if (cancelled) return;
+        setModels(result.ok ? result.models : []);
+        setStatus(result.ok
+          ? { ok: result.models.length > 0, text: result.models.length ? `${result.models.length} model(s) found` : "Server reachable, but no model is loaded." }
+          : { ok: false, text: result.error });
+      } catch (error) {
+        if (!cancelled) setStatus({ ok: false, text: error.message });
+      } finally { if (!cancelled) setBusy(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [chat && chat.id, providerId, provider?.baseUrl, provider?.kind, hasKey]);
 
   if (!chat) {
     return (
@@ -80,7 +82,10 @@ export default function ChatSettings({
           value={providerId}
           onChange={(event) => {
             setProviderId(event.target.value);
-            apply({ provider: event.target.value });
+            setModel("");
+            setModels([]);
+            setStatus(null);
+            apply({ provider: event.target.value, model: "" });
           }}
         >
           {providers.map((item) => (
@@ -117,14 +122,14 @@ export default function ChatSettings({
             className="button secondary"
             onClick={async () => {
               setBusy(true);
-              const result = await api.providers.models({ kind: provider.kind, baseUrl: provider.baseUrl });
-              if (result.ok) {
-                setModels(result.models);
-                setStatus({ ok: true, text: `${result.models.length} model${result.models.length === 1 ? "" : "s"} found` });
-              } else {
-                setStatus({ ok: false, text: result.error });
-              }
-              setBusy(false);
+              try {
+                const result = await api.providers.models({ providerId: provider.id, kind: provider.kind, baseUrl: provider.baseUrl });
+                setModels(result.ok ? result.models : []);
+                setStatus(result.ok
+                  ? { ok: result.models.length > 0, text: result.models.length ? `${result.models.length} model(s) found` : "Server reachable, but no model is loaded." }
+                  : { ok: false, text: result.error });
+              } catch (error) { setStatus({ ok: false, text: error.message }); }
+              finally { setBusy(false); }
             }}
           >
             {busy ? "Checking…" : "Refresh"}
@@ -167,8 +172,10 @@ export default function ChatSettings({
         </div>
       </div>
       <p className="help">
-        The context length is what Lantern asks the model server for. The server still caps it at whatever that model
-        was built for, and a larger window uses more memory. The reply length is a ceiling, not a target.
+        {provider?.kind === "ollama"
+          ? "Context length is requested from Ollama and also used to budget the conversation."
+          : "Context length budgets what Lantern sends; set the actual context limit separately in Colibri or LM Studio. This field does not resize the server’s context."}
+        {" "}The reply length is a ceiling, not a target. Thinking models may need more reply tokens to reach an answer.
       </p>
 
       <div className="row">

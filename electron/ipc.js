@@ -60,8 +60,23 @@ function apiKeyFor(providerId) {
 
 function providerFor(settings, providerId) {
   const list = Array.isArray(settings.providers) ? settings.providers : [];
-  const found = list.find((item) => item.id === providerId) || list[0];
-  return found || { id: "ollama", label: "Ollama", baseUrl: "http://127.0.0.1:11434", kind: "ollama" };
+  const found = list.find((item) => item.id === providerId);
+  if (!found) throw new Error("This conversation’s local provider is unavailable. Choose its server in Model settings; Lantern will not switch providers automatically.");
+  return found;
+}
+
+// Never pass a stored secret to an edited/unsaved server address.
+function discoveryTarget(config = {}) {
+  const settings = db.getSettings();
+  const saved = settings.providers.find((item) => item.id === config.providerId);
+  const kind = config.kind || saved?.kind || "ollama";
+  const baseUrl = config.baseUrl || saved?.baseUrl || "";
+  const apiKey = saved ? apiKeyFor(saved.id) : null;
+  const root = kind === "ollama" ? llm.normaliseBase : llm.openAiRoot;
+  if (apiKey && (kind !== saved.kind || root(baseUrl) !== root(saved.baseUrl))) {
+    throw new Error("Save this address before testing with its stored access key.");
+  }
+  return { kind, baseUrl, apiKey };
 }
 
 function requireChat(chatId) {
@@ -344,6 +359,18 @@ const HANDLERS = {
     }
 
     const next = { ...patch };
+    delete next.secrets;
+    delete next.secretProviders;
+    if (next.providers) {
+      if (!Array.isArray(next.providers)) throw new Error("Providers must be a list.");
+      const ids = new Set();
+      for (const provider of next.providers) {
+        if (!provider || typeof provider.id !== "string" || !provider.id || ids.has(provider.id)) throw new Error("Each local provider must have a unique ID.");
+        ids.add(provider.id);
+        if (!["ollama", "openai", "colibri"].includes(provider.kind)) throw new Error("Unsupported local provider protocol.");
+        llm.normaliseBase(provider.baseUrl);
+      }
+    }
     delete next.setSecret;
     delete next.clearSecret;
     if (secretsChanged) next.secrets = secrets;
@@ -352,12 +379,8 @@ const HANDLERS = {
   },
 
   "providers:test": async (_event, config = {}) => {
-    const target = {
-      kind: config.kind || "ollama",
-      baseUrl: config.baseUrl || "",
-    };
     try {
-      const models = await llm.discoverModels(target);
+      const models = await llm.discoverModels(discoveryTarget(config));
       return { ok: true, count: models.length, models: models.slice(0, 40) };
     } catch (error) {
       return { ok: false, error: String(error.message || error) };
@@ -366,10 +389,29 @@ const HANDLERS = {
 
   "providers:models": async (_event, config = {}) => {
     try {
-      const models = await llm.discoverModels({ kind: config.kind || "ollama", baseUrl: config.baseUrl || "" });
+      const models = await llm.discoverModels(discoveryTarget(config));
       return { ok: true, models };
     } catch (error) {
       return { ok: false, error: String(error.message || error), models: [] };
+    }
+  },
+
+  "providers:generateTest": async (_event, config = {}) => {
+    try {
+      const target = discoveryTarget(config);
+      const models = await llm.discoverModels(target);
+      const model = config.model || models[0]?.id;
+      if (!model || !models.some((item) => item.id === model)) throw new Error("No matching model is loaded. Start Colibri with a model, then Refresh.");
+      const started = Date.now();
+      const result = await llm.streamChat({
+        ...target, model,
+        messages: [{ role: "user", content: "Reply with the words: Lantern local connection works." }],
+        options: { num_predict: 64, temperature: 0, enable_thinking: false },
+        signal: AbortSignal.timeout(180000),
+      });
+      return { ok: true, model, text: result.text.slice(0, 400), elapsedMs: Date.now() - started, usage: result.usage };
+    } catch (error) {
+      return { ok: false, error: String(error.message || error) };
     }
   },
 

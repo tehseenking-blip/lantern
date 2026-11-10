@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import Icon from "./Icon";
+import ColibriHelp from "./ColibriHelp";
 
 export default function SettingsView({ settings, info, onUpdate }) {
   const [providers, setProviders] = useState(settings.providers || []);
@@ -22,13 +23,19 @@ export default function SettingsView({ settings, info, onUpdate }) {
 
   const testConnection = async (provider) => {
     setTestResults((previous) => ({ ...previous, [provider.id]: { pending: true } }));
-    const result = await api.providers.test({ kind: provider.kind, baseUrl: provider.baseUrl });
-    setTestResults((previous) => ({
-      ...previous,
-      [provider.id]: result.ok
-        ? { ok: true, text: `Connected. ${result.count} model${result.count === 1 ? "" : "s"} available.` }
-        : { ok: false, text: result.error },
-    }));
+    try {
+      const result = await api.providers.test({ providerId: provider.id, kind: provider.kind, baseUrl: provider.baseUrl });
+      setTestResults((previous) => ({
+        ...previous,
+        [provider.id]: result.ok
+          ? { ok: result.count > 0, text: result.count > 0
+              ? `Connected. ${result.count} model${result.count === 1 ? "" : "s"} available.`
+              : "Server reachable, but no model is loaded. Load a model in the server, then test again." }
+          : { ok: false, text: result.error },
+      }));
+    } catch (error) {
+      setTestResults((previous) => ({ ...previous, [provider.id]: { ok: false, text: error.message } }));
+    }
   };
 
   const runDataAction = async (action) => {
@@ -109,7 +116,7 @@ export default function SettingsView({ settings, info, onUpdate }) {
         <section className="section">
           <h2>Local model servers</h2>
           <p className="intro">
-            Only localhost addresses are useful here, and only the servers above are contacted. Nothing is ever
+            Only loopback addresses are accepted. Redirects and online fallback are blocked. Nothing is ever
             installed, moved or downloaded by Lantern.
           </p>
 
@@ -141,6 +148,7 @@ export default function SettingsView({ settings, info, onUpdate }) {
                       onChange={(event) => updateProvider(provider.id, { kind: event.target.value })}
                     >
                       <option value="ollama">Ollama</option>
+                      <option value="colibri">Colibri (local OpenAI-compatible API)</option>
                       <option value="openai">OpenAI-compatible (LM Studio, llama.cpp, …)</option>
                     </select>
                   </div>
@@ -186,13 +194,16 @@ export default function SettingsView({ settings, info, onUpdate }) {
                   <button type="button" className="button" onClick={() => onUpdate({ providers })}>
                     Save addresses
                   </button>
-                  <button type="button" className="button secondary" onClick={() => testConnection(provider)}>
+                  <button type="button" className="button secondary" disabled={Boolean(result?.pending)} onClick={() => testConnection(provider)}>
                     {result && result.pending ? "Testing…" : "Test connection"}
                   </button>
                 </div>
 
                 {result && !result.pending && (
-                  <p className={result.ok ? "help ok" : "help bad"}>{result.text}</p>
+                  <p role="status" className={result.ok ? "help ok" : "help bad"}>{result.text}</p>
+                )}
+                {provider.kind === "colibri" && (
+                  <ColibriHelp provider={provider} activeProvider={settings.activeProvider} onUpdate={onUpdate} />
                 )}
               </div>
             );

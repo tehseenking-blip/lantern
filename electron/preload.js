@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("lantern", {
   providers: {
     test: (config) => invoke("providers:test", config),
     models: (config) => invoke("providers:models", config),
+    generateTest: (config) => invoke("providers:generateTest", config),
   },
   chats: {
     list: (query) => invoke("chats:list", query),

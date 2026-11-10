@@ -12,7 +12,10 @@
     "start": "npm run build:ui && electron .",
     "test": "node --test",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "dist": "npm run build:ui && electron-builder --win nsis"
+    "dist": "npm run build:ui && electron-builder --win nsis",
+    "test:desktop": "electron scripts/electron-smoke.cjs",
+    "test:colibri": "node scripts/check-colibri.cjs",
+    "test:windows-launcher": "node scripts/check-windows-launcher.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
