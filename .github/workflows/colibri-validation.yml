@@ -1,0 +1,56 @@
+name: Colibri integration validation
+on:
+  push:
+    branches: [feat/colibri-local-provider]
+  pull_request:
+    branches: [update-app-changes]
+permissions:
+  contents: read
+concurrency:
+  group: colibri-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export exact source snapshot
+        if: runner.os == 'Linux'
+        run: git archive --format=tar HEAD -o lantern-source.tar
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: lantern-source-${{ github.sha }}
+          path: lantern-source.tar
+          retention-days: 3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies and rebuild native modules
+        run: npm install --no-audit --no-fund
+      - name: Unit and local protocol tests
+        run: npm test
+      - name: Production renderer build
+        run: npm run build:ui
+      - name: Build Windows application directory
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check backend JavaScript syntax
+        shell: bash
+        run: for file in electron/*.js; do node --check "$file" || exit 1; done
+      - name: Keep production UI for review
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lantern-renderer-${{ runner.os }}-${{ github.sha }}
+          path: dist-renderer
+          retention-days: 7
